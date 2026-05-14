@@ -39,9 +39,11 @@ failures, not noise. Nix users: `nix develop` first; everything else is identica
    names the specific rule and a one-line reason. Suppression is annotated
    debt — visible, greppable, justified — not a workaround.
 
-3. **Copy the canonical example.** Inventing a new shape for a service,
-   test, or error is a deliberate choice. The defaults are:
+3. **Copy the canonical example.** Inventing a new shape for any of these
+   is a deliberate choice. The defaults are:
    - service: `src/myproject/example_service.py`
+   - config:  `src/myproject/config.py`
+   - logging: `src/myproject/log.py`
    - test:    `tests/test_example_service.py`
    - error:   `src/myproject/errors.py`
 
