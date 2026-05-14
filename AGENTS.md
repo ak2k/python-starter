@@ -99,6 +99,10 @@ legitimate alternatives — tune as a set, not piecemeal.
 Also: `vulture` for unused public API (gap between ruff and coverage).
 Tune `ignore_decorators` for decorator-registered handlers.
 
+For publishing: `hatch-vcs` derives version from git tags; pair with
+`.git_archival.txt` + `.gitattributes export-subst` so flake-via-tarball
+consumers resolve versions without `.git`. https://github.com/ofek/hatch-vcs
+
 ### Profile B — Reverse-engineering / scraping
 
 | Knob | Default | Tune to |
