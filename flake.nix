@@ -16,13 +16,9 @@
       forAllSystems = lib.genAttrs systems;
       pkgsFor = system: nixpkgs.legacyPackages.${system};
 
-      # Single source of truth for Python version: pyproject.toml.
-      # pyproject-nix parses `requires-python` as a list of PEP 440 specifiers.
-      # We treat the first specifier as the lower bound (the conventional
-      # `>=X.Y` form) and map it to `pkgs.pythonXX`. Bumping
-      # `requires-python = ">=3.14"` automatically swaps `pkgs.python314`
-      # into the shell. Multi-constraint forms like `>=3.13,<3.15` work too —
-      # the first spec is used as the floor.
+      # Python interpreter follows pyproject.toml's `requires-python`: the
+      # first PEP 440 spec is taken as the floor (handles `>=X.Y` and
+      # `>=X.Y,<Z.W` shapes). Bump pyproject.toml — shell follows.
       project = pyproject-nix.lib.project.loadPyproject { projectRoot = ./.; };
       lowerBound = lib.head project.requires-python;
       pyAttr =
@@ -44,9 +40,8 @@
               pkgs.gnumake
             ];
 
-            # On Linux (esp. NixOS), uv's default python-build-standalone
-            # cpython is dynamically linked and won't run. Force uv to use
-            # the Nix-managed interpreter. Harmless on Darwin.
+            # uv's bundled python-build-standalone won't link on NixOS;
+            # force the Nix-managed interpreter. No-op on Darwin.
             shellHook = ''
               export UV_PYTHON=${python}/bin/python3
               export UV_PYTHON_PREFERENCE=only-system
@@ -56,12 +51,9 @@
           };
         });
 
-      # --- Optional: build the project as a Nix package via uv2nix ---
-      # Uncomment + add `uv2nix` and `pyproject-build-systems` inputs when you
-      # need `nix build` / `nix run` to produce a derivation (e.g., for nixpkgs
-      # PRs, NixOS modules, home-manager). When you do, also add a
-      # `nix build .#default` step to .github/workflows/ci.yml.
-      # See: https://pyproject-nix.github.io/uv2nix/
+      # To `nix build` this project (for nixpkgs PRs, NixOS modules,
+      # home-manager), enable uv2nix: https://pyproject-nix.github.io/uv2nix/
+      # Then also add `nix build .#default` to ci.yml.
       #
       # packages = forAllSystems (system: { default = ...; });
       # apps = forAllSystems (system: { default = ...; });
