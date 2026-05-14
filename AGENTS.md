@@ -17,6 +17,20 @@ Contract for agents working in this repo. Read first; overrides defaults.
 | Tests | `pytest` + `hypothesis` | unittest |
 | Errors | subclass `myproject.errors.AppError` | bare `Exception`, string errors |
 
+## When you need it, use
+
+Not every project hits these concerns. When yours does, this is the
+choice that fits the rest of the stack — don't substitute.
+
+| Concern | Use |
+|---|---|
+| Retry / backoff | `stamina` |
+| CLI framework | `typer` (paired with `rich` for human-facing output) |
+| Time injection in tests | `time-machine` |
+| HTTP rate limiting (outbound) | `aiolimiter` |
+| SQL | `sqlalchemy 2.0` Core (ORM only when session identity-map earns its keep) |
+| Async file I/O | `anyio.Path` |
+
 ## Inner loop
 
 ```
