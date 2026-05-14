@@ -14,6 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # uv path — runs for everyone
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
@@ -26,5 +27,17 @@ jobs:
       - name: Install deps
         run: uv sync --frozen
 
-      - name: Inner loop
+      - name: Inner loop (uv)
         run: make check
+
+      # nix path — only if the user kept flake.nix
+      - name: Install Nix
+        if: ${{ hashFiles('flake.nix') != '' }}
+        uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Inner loop (nix develop)
+        if: ${{ hashFiles('flake.nix') != '' }}
+        run: nix develop -c make check
