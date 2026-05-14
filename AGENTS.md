@@ -68,6 +68,9 @@ legitimate alternatives — tune as a set, not piecemeal.
 | Coverage `fail_under` | 80 | 60 (CLI argv is hard to cover) |
 | `PLR0913` (too many args) | strict | ignore (verb signatures are wide) |
 
+Also: `vulture` for unused public API (gap between ruff and coverage).
+Tune `ignore_decorators` for decorator-registered handlers.
+
 ### Profile B — Reverse-engineering / scraping
 
 | Knob | Default | Tune to |
@@ -78,7 +81,7 @@ legitimate alternatives — tune as a set, not piecemeal.
 | `reportMissingTypeStubs` | `"warning"` | `false` |
 | `reportAny` | `"warning"` | `"none"` |
 
-### Profile C — One-off script (<~50 lines)
+### Profile C — Single-file script
 
 Skip the template. PEP 723 inline header:
 
