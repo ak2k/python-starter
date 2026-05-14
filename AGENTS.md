@@ -55,6 +55,18 @@ failures, not noise. Nix users: `nix develop` first; everything else is identica
    missing test infrastructure → ask. Don't invent the shape, don't
    suppress just to make it pass.
 
+6. **Tests assert behavior, not implementation.** `hypothesis` for property
+   tests at parsing boundaries; `httpx.MockTransport` for hermetic HTTP;
+   `monkeypatch.setenv` for env-driven settings; assert on domain errors,
+   not on HTTP status codes leaking through.
+
+7. **Imports declare intent.** `from __future__ import annotations` at the
+   top of every module; runtime-only third-party types inside `if
+   TYPE_CHECKING:`.
+
+8. **Async runtime is anyio.** Not raw asyncio. Compose with sync at the
+   edges via `anyio.from_thread` / `anyio.to_thread`.
+
 ## Appropriate divergence
 
 Defaults assume a **strict greenfield service**. These profiles are

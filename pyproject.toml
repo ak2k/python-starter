@@ -71,6 +71,7 @@ ignore = [
     "PLR0913",               # many arguments — verb signatures are wide
     "D203",                  # conflicts with D211
     "D213",                  # conflicts with D212
+    "COM812",                # conflicts with ruff format (trailing-comma rules)
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -97,7 +98,10 @@ reportAny = "warning"  # the killer feature vs vanilla pyright
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config --cov=src --cov-report=term-missing:skip-covered"
 xfail_strict = true
-filterwarnings = ["error"]  # deprecations become test failures — catch early
+filterwarnings = [
+    "error",  # deprecations become test failures — catch early
+    "ignore::hypothesis.errors.NonInteractiveExampleWarning",
+]
 markers = [
     # Pre-declare custom markers here; `--strict-markers` rejects undeclared ones.
     # "slow: marks tests as slow (deselect with -m 'not slow')",
