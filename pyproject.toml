@@ -55,7 +55,7 @@ select = [
     "PTH",           # pathlib over os.path
     "TC",            # TYPE_CHECKING import discipline
     "RET",           # return-statement hygiene
-    "PIE",           # misc
+    "PIE",           # flake8-pie: misc anti-patterns (unnecessary list/dict/set comprehensions, etc.)
     "PL",            # pylint subset
     "ANN",           # require annotations — agents drop them otherwise
     "S",             # bandit (security)
@@ -91,7 +91,7 @@ typeCheckingMode = "strict"
 reportMissingTypeStubs = "warning"
 reportImplicitOverride = "error"
 reportUnusedCallResult = "none"
-reportAny = "warning"  # the killer feature vs vanilla pyright
+reportAny = "warning"  # flags Any-typed expressions; basedpyright-only
 
 # --- pytest ---
 [tool.pytest.ini_options]

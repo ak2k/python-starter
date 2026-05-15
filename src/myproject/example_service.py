@@ -65,7 +65,7 @@ async def check_service_health(client: httpx.AsyncClient, base_url: str) -> Heal
         raise NotFoundError(f"no /health endpoint on {base_url}")
     if response.is_error:
         raise ExternalServiceError(
-            f"{base_url} returned {response.status_code}: {response.text[:200]}"
+            f"{base_url} returned {response.status_code}: {response.content[:200]!r}"
         )
 
     try:
