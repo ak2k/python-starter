@@ -48,3 +48,16 @@ jobs:
       - name: Inner loop (nix develop)
         if: ${{ hashFiles('flake.nix') != '' }}
         run: nix develop -c make check
+
+      # Proves the uv2nix wiring resolves end-to-end: project + deps build
+      # under pure Nix (no uv at build time). Catches lockfile drift and
+      # missing build-backend overrides early.
+      - name: Build venv (nix)
+        if: ${{ hashFiles('flake.nix') != '' }}
+        run: nix build .#default --print-build-logs
+
+      # Runs `checks.${system}.*` from flake.nix: statix + nixfmt --check.
+      # Also re-evaluates devShells/packages/inputs as a smoke test.
+      - name: Flake check (statix + nixfmt)
+        if: ${{ hashFiles('flake.nix') != '' }}
+        run: nix flake check --print-build-logs

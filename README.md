@@ -25,21 +25,28 @@ make check
 
 ### Nix users
 
-The repo ships a minimal `flake.nix` providing Python 3.13 + uv via `nix develop`.
-Use it instead of system Python/uv if you want reproducibility:
+The flake exposes two dev shells, two venv packages, plus `nix fmt` and `nix flake check`:
 
 ```bash
-nix develop           # Python + uv + make on PATH
-make check            # identical to non-Nix path
+nix develop              # default: python + uv + make. `uv sync` populates .venv.
+nix develop .#pure       # uv2nix editable venv. No .venv. Worktree edits live.
+nix build .#default      # runtime venv: project + [project.dependencies]
+nix build .#dev          # dev venv: adds [dependency-groups].dev (pytest, ruff, ...)
+nix fmt                  # autoformat flake.nix (RFC-166 via nixfmt)
+nix flake check          # statix lint + nixfmt --check on flake.nix
 ```
+
+Pick `default` for daily work — `uv add` / `uv lock` / `uv run` all mutate state
+naturally and `make check` is the same command as the non-Nix path. Pick `.#pure`
+when you want fully Nix-resolved deps with one-step onboarding; the trade-off is
+that `uv.lock` changes require exiting and re-entering the shell so Nix can
+re-resolve. The `packages` outputs are for nixpkgs PRs, NixOS modules, or
+downstream Nix consumers — not needed for daily work.
 
 direnv auto-activation: edit `.envrc` to uncomment `use flake`, then `direnv allow`.
 
 uv remains the source of truth — `pyproject.toml` + `uv.lock` drive everything.
-The flake just wraps the dev environment. To go further and *build the project
-as a Nix derivation*, uncomment the `packages` block in `flake.nix` and follow
-the [uv2nix docs](https://pyproject-nix.github.io/uv2nix/). Most projects don't
-need this.
+The Nix layer is a lens, built via [uv2nix](https://pyproject-nix.github.io/uv2nix/).
 
 ## What's in here
 
@@ -53,7 +60,7 @@ need this.
 | `tests/test_example_service.py` | Canonical test shape — copy for new tests |
 | `src/myproject/errors.py` | Domain error hierarchy |
 | `.github/workflows/ci.yml` | CI runs `make check` |
-| `flake.nix` + `.envrc` | Optional Nix dev shell (Python + uv); commented uv2nix block for project-as-derivation |
+| `flake.nix` + `.envrc` | Optional Nix layer: `default` (uv-managed) + `.#pure` (uv2nix editable) dev shells; `packages.{default,dev}` venvs |
 
 ## Philosophy
 
