@@ -17,6 +17,13 @@ Contract for agents working in this repo. Read first; overrides defaults.
 | Tests | `pytest` + `hypothesis` | unittest |
 | Errors | subclass `myproject.errors.AppError` | bare `Exception`, string errors |
 
+> **Dataclass scope.** The Pydantic-not-dataclasses rule is scoped to *boundary
+> validation* (untrusted/external input). For **internal, trusted, hot-path
+> value types** — constructed by type-checked code, never parsed from input — a
+> `@dataclass(frozen=True, slots=True)` is the right call: identical static
+> guarantees (Literal narrowing, `assert_never`), zero redundant
+> per-construction validation. Mark it `# DIVERGE: internal trusted value type`.
+
 ## When you need it, use
 
 Not every project hits these concerns. When yours does, this is the
@@ -112,6 +119,13 @@ consumers resolve versions without `.git`. https://github.com/ofek/hatch-vcs
 | `typeCheckingMode` | `"strict"` | `"standard"` + strict per-module on public API |
 | `reportMissingTypeStubs` | `"warning"` | `false` |
 | `reportAny` | `"warning"` | `"none"` |
+
+**Strict-per-module mechanism.** "standard + strict per-module on public API"
+means: `typeCheckingMode = "standard"` globally (so untyped scraping libs don't
+drown you) + a `# pyright: strict` file-header on each pure-logic / typed-core
+module. Keep untrusted-parsing boundary modules (`json.loads -> object`
+juggling) in standard mode — strict fights them and the Pydantic boundary type
+validates the output anyway. TS-grade rigor on the core, tolerance at the edges.
 
 ### Profile C — Single-file script
 
