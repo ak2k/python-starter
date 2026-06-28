@@ -30,6 +30,13 @@ choice that fits the rest of the stack — don't substitute.
 | HTTP rate limiting (outbound) | `aiolimiter` |
 | SQL | `sqlalchemy 2.0` Core (ORM only when session identity-map earns its keep) |
 | Async file I/O | `anyio.Path` |
+| SAST / taint analysis | `opengrep` (Semgrep-OSS fork; source→sink dataflow that ruff-`S` can't do) |
+
+The baseline already ships ruff-`S` (bandit) for syntactic security lints and a
+gitleaks workflow for secrets — that covers most projects. Reach for `opengrep`
+only when the service is internet-facing or deserializes / SQL-builds untrusted
+input, where interprocedural taint tracking earns its keep. It's an external
+binary (not `uv`-installable), so wire it into CI / the nix shell, not `make check`.
 
 ## Inner loop
 
