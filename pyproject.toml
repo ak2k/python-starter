@@ -4,13 +4,16 @@ version = "0.1.0"
 description = "A new Python project."
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.13"
+# 3.12 floor for broad host portability — every downstream adopter lowered the 3.13
+# default. Raise per deploy target; flake.nix's interpreter follows this line.
+requires-python = ">=3.12"
 authors = [{ name = "ak2k" }]
 classifiers = [
     "Development Status :: 1 - Planning",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
@@ -39,7 +42,7 @@ packages = ["src/myproject"]
 
 # --- ruff: lint + format ---
 [tool.ruff]
-target-version = "py313"
+target-version = "py312"
 line-length = 100
 src = ["src", "tests"]
 
@@ -80,13 +83,20 @@ ignore = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.ruff.lint.flake8-type-checking]
+# `TC` (selected above) pushes type-only imports under `if TYPE_CHECKING`. Pydantic
+# resolves model field annotations at runtime, so its base classes must stay
+# runtime-visible or every BaseModel / BaseSettings subclass breaks. Ships in the
+# baseline because Pydantic is the baseline boundary validator.
+runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseSettings"]
+
 [tool.ruff.format]
 docstring-code-format = true
 
 # --- basedpyright: types ---
 [tool.basedpyright]
 include = ["src", "tests"]
-pythonVersion = "3.13"
+pythonVersion = "3.12"
 typeCheckingMode = "strict"
 reportMissingTypeStubs = "warning"
 reportImplicitOverride = "error"
@@ -106,6 +116,9 @@ markers = [
     # Pre-declare custom markers here; `--strict-markers` rejects undeclared ones.
     # "slow: marks tests as slow (deselect with -m 'not slow')",
     # "integration: requires external services",
+    # "live: hits the real network/browser",
+    #  ^ uncomment to declare it, then append `-m 'not live'` to addopts above so the
+    #    inner loop stays hermetic (CI opts in by dropping that filter).
 ]
 
 # --- coverage ---

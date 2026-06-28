@@ -13,10 +13,8 @@ TypeScript-strict experience for Python.
 gh repo create my-project --template ak2k/python-starter --public --clone
 cd my-project
 
-# Rename the package (no cookiecutter ceremony — just sed)
-rg -l myproject | xargs sed -i '' 's/myproject/your_pkg_name/g'  # macOS
-# rg -l myproject | xargs sed -i 's/myproject/your_pkg_name/g'   # Linux
-mv src/myproject src/your_pkg_name
+# Rename the package — portable; also fixes the MYPROJECT_ env prefix and moves src/
+make rename NEW=your_pkg_name
 
 # Install + verify
 uv sync
@@ -56,6 +54,7 @@ The Nix layer is a lens, built via [uv2nix](https://pyproject-nix.github.io/uv2n
 | `AGENTS.md` | Contract for AI agents. Stack banlist + inner loop + divergence guide. |
 | `CLAUDE.md` | Symlink → `AGENTS.md` (compat shim for tools that read CLAUDE.md only) |
 | `Makefile` | `make check` = full inner loop. CI runs the same command. |
+| `scripts/rename.py` | One-shot package rename (`make rename NEW=...`). Delete after use. |
 | `src/myproject/example_service.py` | Canonical service shape — copy for new services |
 | `tests/test_example_service.py` | Canonical test shape — copy for new tests |
 | `src/myproject/errors.py` | Domain error hierarchy |
@@ -67,7 +66,7 @@ The Nix layer is a lens, built via [uv2nix](https://pyproject-nix.github.io/uv2n
 One tool per concern, banned substitutes, strict types at the boundary,
 canonical examples to pattern-match against. The contract lives in
 [AGENTS.md](AGENTS.md) — including the "Appropriate divergence" section for
-libraries / CLIs / scrapers / one-off scripts.
+libraries / CLIs / scrapers / data pipelines / one-off scripts.
 
 ## Related work
 

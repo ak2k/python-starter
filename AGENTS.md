@@ -9,13 +9,17 @@ Contract for agents working in this repo. Read first; overrides defaults.
 | Package manager | `uv` | pip, poetry, pipenv, pyenv |
 | Lint / format | `ruff` + `ruff format` | black, isort, flake8, pylint |
 | Type checker | `basedpyright` strict | mypy, pyright |
-| Boundary validation | Pydantic v2 (`extra="forbid"`, `frozen=True`) | dataclasses, attrs, TypedDict |
+| Boundary validation | Pydantic v2 (`extra="forbid"`, `frozen=True`) | dataclasses *(at boundaries)*, attrs, TypedDict |
 | HTTP | `httpx` | requests, aiohttp, urllib |
 | Async runtime | `anyio` | raw asyncio |
 | Logging | `structlog` | stdlib logging, `print()` |
 | Paths | `pathlib.Path` | `os.path` |
 | Tests | `pytest` + `hypothesis` | unittest |
 | Errors | subclass `myproject.errors.AppError` | bare `Exception`, string errors |
+
+The **`Not` column bans these for boundary validation**, not everywhere. Internally,
+a frozen `@dataclass(frozen=True)` is the right tool for a trusted value type that
+never crosses an edge — Pydantic earns its validation cost only at boundaries.
 
 ## When you need it, use
 
@@ -97,11 +101,20 @@ legitimate alternatives — tune as a set, not piecemeal.
 
 | Knob | Default | Tune to |
 |---|---|---|
-| `requires-python` | `>=3.13` | `>=3.10` (or per support window) |
+| `requires-python` | `>=3.12` | `>=3.10` (or per support window) |
 | Ruff `D*` (docstrings) | enabled | drop for small internal surface |
-| `pythonVersion` (basedpyright) | `"3.13"` | match `requires-python` lower bound |
+| `pythonVersion` (basedpyright) | `"3.12"` | match `requires-python` lower bound |
 | Coverage `fail_under` | 80 | 60 (CLI argv is hard to cover) |
 | `PLR0913` (too many args) | strict | ignore (verb signatures are wide) |
+
+**CLI stack:** `typer` + `rich` (human output) + `stamina` (retry) — the "when you
+need it" picks, standardized so every CLI looks the same. Adding `typer` needs one
+ruff stanza so its parameter-default idiom doesn't trip `B008`:
+
+```toml
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["typer.Argument", "typer.Option"]
+```
 
 Also: `vulture` for unused public API (gap between ruff and coverage).
 Tune `ignore_decorators` for decorator-registered handlers.
@@ -120,6 +133,13 @@ consumers resolve versions without `.git`. https://github.com/ofek/hatch-vcs
 | `reportMissingTypeStubs` | `"warning"` | `false` |
 | `reportAny` | `"warning"` | `"none"` |
 
+Knobs apply per-module too — relax `extra="ignore"` on the one parser facing an
+unstable upstream, not project-wide. Keep the inner loop hermetic: mark live
+network/browser tests `@pytest.mark.live` and default-deselect with `-m 'not live'`
+in addopts; CI opts in. Heavy native deps (`nodriver`, `camoufox`) belong in a
+`[project.optional-dependencies]` `browser` extra so the core install stays
+wheel-light — CI still builds the extra.
+
 ### Profile C — Single-file script
 
 Skip the template. PEP 723 inline header:
@@ -134,6 +154,19 @@ Skip the template. PEP 723 inline header:
 
 Graduate to the template once the script grows past one file or acquires a test.
 
+### Profile D — Data / analytics pipeline
+
+Batch/sync transforms over a data engine — not a service. Tune as a set:
+
+| Knob | Default | Tune to |
+|---|---|---|
+| `httpx` + `anyio` | baseline deps | drop both (batch/sync; no live HTTP or async runtime) |
+| Data engine | — | add one: `duckdb` / `pandas` / `polars` (+ `sqlglot` to build SQL safely) |
+| `typeCheckingMode` | `"strict"` | keep strict; downgrade the three `reportUnknown*` in the data-adapter module only (untyped engines — see "Known gotchas") |
+| Coverage `fail_under` | 80 | 50–70 (orchestration + I/O are integration-tested; property-test the parsers) |
+| Regression gate | unit asserts | + snapshot / golden outputs; pin `PYTHONHASHSEED=0` so ordering is deterministic |
+| SQL lint | — | `sqlfluff`, wired into `make` beside `ruff` (e.g. a `sql-lint` target) |
+
 ## Known gotchas (non-obvious from the toolchain)
 
 - `structlog.get_logger()` returns `Any`. Annotate via
@@ -143,3 +176,10 @@ Graduate to the template once the script grows past one file or acquires a test.
   (mis-typed by httpx as tuple) and not bare `404` (PLR2004).
 - `extra="forbid"` Pydantic models raise on any unknown upstream field.
   Intentional: drift fails at the boundary, not silently corrupting downstream.
+- **Untyped data engines** (`duckdb`, `pandas`, `sqlglot`) flood `strict` mode with
+  `reportUnknown*`. Don't scatter `# pyright: ignore`. Isolate the untyped surface in
+  one adapter module and downgrade exactly three reports at the top of that file:
+  ```python
+  # pyright: reportUnknownMemberType=warning, reportUnknownArgumentType=warning, reportUnknownVariableType=warning
+  ```
+  The rest of the codebase stays strict; the boundary is greppable and contained.
