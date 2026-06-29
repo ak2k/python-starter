@@ -33,6 +33,7 @@ choice that fits the rest of the stack — don't substitute.
 | Time injection in tests | `time-machine` |
 | HTTP rate limiting (outbound) | `aiolimiter` |
 | SQL | `sqlalchemy 2.0` Core (ORM only when session identity-map earns its keep) |
+| Persistent on-disk cache (survives restarts) | `diskcache` (SQLite-backed; wrap in a typed `cache.py` facade — see gotcha). In-process memoization is stdlib `functools.cache`; in-memory TTL/LRU is `cachetools` — don't reach for `diskcache` until you need persistence across runs |
 | Async file I/O | `anyio.Path` |
 | SAST / taint analysis | `opengrep` (Semgrep-OSS fork; source→sink dataflow that ruff-`S` can't do) |
 
@@ -183,3 +184,7 @@ Batch/sync transforms over a data engine — not a service. Tune as a set:
   # pyright: reportUnknownMemberType=warning, reportUnknownArgumentType=warning, reportUnknownVariableType=warning
   ```
   The rest of the codebase stays strict; the boundary is greppable and contained.
+- **`diskcache` is untyped and sync.** No `py.typed`, so `strict` floods `reportUnknown*`
+  (same class as the data engines above). Don't scatter `# pyright: ignore` — isolate it
+  behind one typed `cache.py` facade. Its API is sync SQLite: fine in a CLI/batch, but in
+  an async service wrap reads/writes in `anyio.to_thread` inside that facade (Principle 8).
