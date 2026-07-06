@@ -183,6 +183,8 @@ Batch/sync transforms over a data engine — not a service. Tune as a set:
 - `structlog.get_logger()` returns `Any`. Annotate via
   `if TYPE_CHECKING: from structlog.stdlib import BoundLogger`, then suppress
   the RHS with `# pyright: ignore[reportAny]` + reason.
+- `# type: ignore[code]` is inert here — only `# pyright: ignore[code]` is honored,
+  and neither pyright nor PGH003 flags the dead comment. Convert mypy-style suppressions.
 - Use `http.HTTPStatus.NOT_FOUND` — stdlib, well-typed. Not `httpx.codes.NOT_FOUND`
   (mis-typed by httpx as tuple) and not bare `404` (PLR2004).
 - `extra="forbid"` Pydantic models raise on any unknown upstream field.

@@ -103,8 +103,8 @@ reportMissingTypeStubs = "warning"
 reportImplicitOverride = "error"
 reportUnusedCallResult = "none"
 reportAny = "warning"  # flags Any-typed expressions; basedpyright-only
-enableTypeIgnoreComments = false        # blanket `# type: ignore` is inert — forces code-scoped `# pyright: ignore[code]`
-reportUnnecessaryTypeIgnoreComment = "error"  # a suppression that no longer suppresses anything is an error (rots stale ignores)
+enableTypeIgnoreComments = false        # every `# type: ignore` (blanket AND code-scoped) is inert — only `# pyright: ignore[code]` is honored
+reportUnnecessaryTypeIgnoreComment = "error"  # a `# pyright: ignore` that no longer suppresses anything fails CI (flags stale ignores so they can't rot in place)
 
 # --- pytest ---
 [tool.pytest.ini_options]
