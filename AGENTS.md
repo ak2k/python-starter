@@ -93,6 +93,16 @@ failures, not noise. Nix users: `nix develop` first; everything else is identica
 8. **Async runtime is anyio.** Not raw asyncio. Compose with sync at the
    edges via `anyio.from_thread` / `anyio.to_thread`.
 
+9. **Prove red, then claim green.** A new test must fail on the pre-fix code
+   — watch it fail before the fix, or it proves nothing. "Passes" means a
+   fresh `make check` exited 0 *this session* — paste that output, don't
+   recall it. A snapshot/golden mismatch is a behavior change to explain and
+   stop on; regenerating goldens is a human act, never an agent's.
+
+10. **Smallest coherent diff.** Land the minimal change that stands on its
+    own; split work past ~400 changed lines into stages and land stage 1
+    first.
+
 ## Appropriate divergence
 
 Defaults assume a **strict greenfield service**. These profiles are
@@ -173,6 +183,8 @@ Batch/sync transforms over a data engine — not a service. Tune as a set:
 - `structlog.get_logger()` returns `Any`. Annotate via
   `if TYPE_CHECKING: from structlog.stdlib import BoundLogger`, then suppress
   the RHS with `# pyright: ignore[reportAny]` + reason.
+- `# type: ignore[code]` is inert here — only `# pyright: ignore[code]` is honored,
+  and neither pyright nor PGH003 flags the dead comment. Convert mypy-style suppressions.
 - Use `http.HTTPStatus.NOT_FOUND` — stdlib, well-typed. Not `httpx.codes.NOT_FOUND`
   (mis-typed by httpx as tuple) and not bare `404` (PLR2004).
 - `extra="forbid"` Pydantic models raise on any unknown upstream field.

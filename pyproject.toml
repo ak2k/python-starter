@@ -55,6 +55,7 @@ select = [
     "SIM",           # simplify
     "RUF",           # ruff-specific
     "ASYNC",         # async correctness — high signal
+    "PGH",           # blanket-noqa / blanket-type-ignore — force code-scoped suppressions
     "PTH",           # pathlib over os.path
     "TC",            # TYPE_CHECKING import discipline
     "RET",           # return-statement hygiene
@@ -102,6 +103,8 @@ reportMissingTypeStubs = "warning"
 reportImplicitOverride = "error"
 reportUnusedCallResult = "none"
 reportAny = "warning"  # flags Any-typed expressions; basedpyright-only
+enableTypeIgnoreComments = false        # every `# type: ignore` (blanket AND code-scoped) is inert — only `# pyright: ignore[code]` is honored
+reportUnnecessaryTypeIgnoreComment = "error"  # a `# pyright: ignore` that no longer suppresses anything fails CI (flags stale ignores so they can't rot in place)
 
 # --- pytest ---
 [tool.pytest.ini_options]
