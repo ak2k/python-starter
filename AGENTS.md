@@ -55,10 +55,12 @@ are load-bearing — deprecation warnings and unexpected passes are real
 failures, not noise. Nix users: `nix develop` first; everything else is identical.
 
 Entering a nix dev shell installs the tracked pre-push hook
-(`.githooks/pre-push`), which runs `make check` + `nix flake check` so "green
-locally" == "green in CI". NB `nix flake check` does NOT typecheck — only
-`make check` runs basedpyright; run both (or push) before claiming green.
-Bypass: `git push --no-verify` or `MYPROJECT_SKIP_PREPUSH=1`.
+(`.githooks/pre-push`), which runs `make check` + `nix flake check` against
+your WORKING TREE — on a clean tree that is exactly what CI runs against the
+pushed commits (the hook warns when dirty/untracked files make the two
+diverge). NB `nix flake check` does NOT typecheck — only `make check` runs
+basedpyright; run both (or push) before claiming green. Bypass:
+`git push --no-verify` or `MYPROJECT_SKIP_PREPUSH=1`.
 
 ## Principles
 

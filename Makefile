@@ -1,12 +1,19 @@
 .PHONY: help install rename check lint format typecheck test fix clean
 
-# Keep the environment out of the source tree, matching the interactive `uv` wrapper's
-# path (~/.cache/uv-venvs/<dir>-<hash of $PWD>). That wrapper is a shell function, so make,
-# scripts and backgrounded subshells never see it and would otherwise build a SECOND,
-# extras-less .venv in-tree — which uv then prefers non-interactively. The symptom is
-# baffling: `uv run` finds an optional extra interactively and not under nohup.
-# `?=` so an explicit export (e.g. a nix shell pinning the env to its closure) wins.
-export UV_PROJECT_ENVIRONMENT ?= $(HOME)/.cache/uv-venvs/$(notdir $(CURDIR))-$(shell printf '%s' "$(CURDIR)" | shasum | cut -c1-8)
+# Keep the environment out of the source tree at a deterministic per-directory
+# path, so every non-interactive caller (make, scripts, nohup'd subshells, CI)
+# resolves the SAME env instead of building a second, extras-less .venv in-tree
+# that uv then prefers. The symptom that motivates this is baffling: `uv run`
+# finds an optional extra interactively and not under nohup. An inherited
+# UV_PROJECT_ENVIRONMENT (e.g. a nix shell pinning the env to its closure)
+# always wins. The hash keys on the absolute path so same-named checkouts
+# (clones, worktrees) never share an env; if neither hash tool exists, fail
+# loudly rather than silently collapsing them onto one.
+ifeq ($(origin UV_PROJECT_ENVIRONMENT), undefined)
+UV_ENV_HASH := $(shell printf '%s' "$(CURDIR)" | { command -v shasum >/dev/null 2>&1 && shasum || sha1sum; } | cut -c1-8)
+$(if $(UV_ENV_HASH),,$(error cannot hash CURDIR: install shasum or sha1sum))
+export UV_PROJECT_ENVIRONMENT := $(HOME)/.cache/uv-venvs/$(notdir $(CURDIR))-$(UV_ENV_HASH)
+endif
 
 help: ## show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-12s\033[0m %s\n", $$1, $$2}'

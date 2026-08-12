@@ -101,11 +101,11 @@
           editableVenv = editablePythonSet.mkVirtualEnv "myproject-dev-env" workspace.deps.all;
 
           # Point git at the tracked pre-push hook (faithful gate) on shell entry.
-          # Idempotent; silently skipped outside a work tree. Bypass a push with
-          # `git push --no-verify` or `MYPROJECT_SKIP_PREPUSH=1`.
+          # Idempotent; silently skipped outside a work tree. Bypass details in
+          # .githooks/pre-push (the canonical copy).
           installHooks = ''
             git config --local core.hooksPath .githooks 2>/dev/null \
-              && echo "🪝 pre-push gate: .githooks (bypass: git push --no-verify)" || true
+              && echo "🪝 pre-push gate: .githooks (bypass: git push --no-verify / MYPROJECT_SKIP_PREPUSH=1)" || true
           '';
         in
         {
@@ -133,7 +133,9 @@
           # Pure shell: uv2nix-built venv with the project installed editable.
           # No `.venv` needed. Source edits to src/myproject/ are live. Bumping
           # uv.lock requires exiting and re-entering so Nix re-resolves.
-          # `uv lock --upgrade` works inside; `uv sync` is suppressed by UV_NO_SYNC.
+          # `uv lock --upgrade` works inside. Dep changes (`uv sync`, `uv add`,
+          # `make install`) do NOT — the env is a read-only nix closure, so they
+          # fail with a store-path permission error; use the default shell.
           pure = pkgs.mkShell {
             packages = [
               editableVenv
@@ -197,12 +199,17 @@
           '';
           # The test suite run against `src/` inside the closure. `PYTHONPATH=src`
           # shadows the installed copy so coverage/fixtures resolve to the tree.
+          # `${./.}` is the flake source — git-TRACKED files only; a new test
+          # must be `git add`ed before this check can see it (matching CI).
+          # NB darwin nix defaults to `sandbox = false`, so this check is
+          # stricter on Linux CI than locally — a test that touches the network
+          # or reads /etc can pass here and fail there.
           pytest = pkgs.runCommand "check-pytest" { nativeBuildInputs = [ testVenv ]; } ''
             cp -r ${./.} work && chmod -R +w work && cd work
             export HOME="$TMPDIR"
             export PYTHONPATH="$PWD/src"
-            # The sandbox has no system CA bundle; tests that construct an httpx
-            # client (SSL context init, no network) need a cert file to exist.
+            # The Linux sandbox has no system CA bundle; tests that construct an
+            # httpx client (SSL context init, no network) need a cert file.
             export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
             pytest -p no:cacheprovider
             touch $out
