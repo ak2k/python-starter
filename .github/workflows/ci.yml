@@ -37,6 +37,11 @@ jobs:
       - name: Inner loop (uv)
         run: make check
 
+      # Hermetic regression matrix for the pre-push gate + guarded installer
+      # (make/nix are PATH-shimmed inside the script — no nix needed here).
+      - name: Gate probes
+        run: ./scripts/check-gate.sh
+
       # nix path — only if the user kept flake.nix
       - name: Install Nix
         if: ${{ hashFiles('flake.nix') != '' }}
@@ -56,10 +61,11 @@ jobs:
         if: ${{ hashFiles('flake.nix') != '' }}
         run: nix build .#default --print-build-logs
 
-      # Runs `checks.${system}.*` from flake.nix: statix + nixfmt --check +
-      # the test suite inside the uv2nix closure (catches native-linking
+      # Runs every `checks.${system}.*` from flake.nix (see there for the
+      # current set — nix hygiene, shell lint, gate matrix, and the test
+      # suite inside the uv2nix closure, which catches native-linking
       # failures the wheels-based uv path above can't see). Also re-evaluates
       # devShells/packages/inputs as a smoke test.
-      - name: Flake check (statix + nixfmt + pytest-in-closure)
+      - name: Flake check
         if: ${{ hashFiles('flake.nix') != '' }}
         run: nix flake check --print-build-logs

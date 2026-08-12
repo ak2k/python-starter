@@ -100,53 +100,16 @@
           );
           editableVenv = editablePythonSet.mkVirtualEnv "myproject-dev-env" workspace.deps.all;
 
-          # Arm the tracked pre-push gate (.githooks/pre-push) on shell entry —
-          # only when provably safe. core.hooksPath REPLACES .git/hooks wholesale
-          # (it would silently disable git-lfs / pre-commit / husky hooks), so:
-          # arm only inside a repo whose TRACKED tree carries our marker, with no
-          # hooksPath convention at ANY scope and no existing hooks to disable;
-          # otherwise print why plus the manual command. Style is load-bearing:
-          # this runs in the USER'S shell (direnv sources it into zsh), where
-          # `pipefail` turns a SIGPIPE'd `cmd | grep -q` probe into a guard
-          # bypass and zsh does not word-split unquoted command variables — so
-          # no short-circuiting pipelines, no `$cmd` indirection, and a probe
-          # failure refuses rather than arms. Subshell keeps variables out of
-          # the interactive shell. Bypass details in .githooks/pre-push.
+          # Arm the tracked pre-push gate via the guarded installer — a real
+          # script (shellcheck-linted by checks.shellcheck, regression-tested
+          # by checks.gate), executed as its own `sh` process so the user's
+          # interactive shell options (errexit/pipefail/zsh nomatch) cannot
+          # alter its control flow. The flake's own store copies run, and the
+          # hook path argument lets the installer refuse to arm a repo whose
+          # hook is not the one this dev shell ships. `|| true` only shields
+          # shell entry; the installer reports its own refusals.
           installHooks = ''
-            (
-              top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-              # marker must be TRACKED and executable — a foreign repo that
-              # happens to contain its own .githooks/pre-push is not ours
-              git ls-files --error-unmatch -- .githooks/pre-push >/dev/null 2>&1 || exit 0
-              [ -x "$top/.githooks/pre-push" ] || exit 0
-              manual="git config --local core.hooksPath .githooks"
-              armed=""
-              current=$(git config --get core.hooksPath 2>/dev/null || true)  # any scope
-              hooks_dir=$(git rev-parse --git-path hooks)
-              if [ "$current" = ".githooks" ]; then
-                armed=1
-              elif [ -n "$current" ]; then
-                origin=$(git config --show-origin --get core.hooksPath 2>/dev/null | cut -f1)
-                echo "🪝 pre-push gate NOT armed: core.hooksPath is already '$current' ($origin) — to arm locally: $manual"
-              elif ! existing=$(find "$hooks_dir" -maxdepth 1 \( -type f -o -type l \) ! -name '*.sample' -print -quit 2>/dev/null); then
-                echo "🪝 pre-push gate NOT armed: could not inspect $hooks_dir — arm manually if appropriate: $manual"
-              elif [ -n "$existing" ]; then
-                echo "🪝 pre-push gate NOT armed: existing hook $existing would be disabled — to arm: $manual"
-              elif git config --local core.hooksPath .githooks 2>/dev/null; then
-                armed=1
-              else
-                echo "🪝 pre-push gate NOT armed: 'git config' write failed (read-only or locked .git/config?) — arm manually: $manual" >&2
-              fi
-              if [ -n "$armed" ]; then
-                echo "🪝 pre-push gate: armed (bypass: git push --no-verify or MYPROJECT_SKIP_PREPUSH=1 git push)"
-                # the --local write lives in the SHARED repo config: warn when
-                # sibling worktrees would resolve hooks to a missing .githooks
-                wt_count=$(git worktree list --porcelain 2>/dev/null | grep -c '^worktree ' || true)
-                if [ "$wt_count" -gt 1 ]; then
-                  echo "🪝 note: $wt_count worktrees share this hook config — a worktree whose branch lacks .githooks/pre-push has NO pre-push hook" >&2
-                fi
-              fi
-            )
+            sh ${./.githooks/install} ${./.githooks/pre-push} || true
           '';
         in
         {
@@ -222,12 +185,12 @@
         system:
         let
           pkgs = pkgsFor system;
-          # Non-editable venv with ALL deps to run the suite inside the uv2nix
-          # closure — what makes `nix flake check` a faithful gate: it catches
-          # native-linking failures the wheels-based raw-uv path hides. NB this
-          # does NOT typecheck; only `make check` runs basedpyright (the
-          # pre-push hook runs both).
-          testVenv = pythonSets.${system}.mkVirtualEnv "myproject-test-env" workspace.deps.all;
+          # The dev venv (same derivation `nix build .#dev` produces) runs the
+          # suite inside the uv2nix closure — what makes `nix flake check` a
+          # faithful gate: it catches native-linking failures the wheels-based
+          # raw-uv path hides. NB this does NOT typecheck; only `make check`
+          # runs basedpyright (the pre-push hook runs both).
+          testVenv = self.packages.${system}.dev;
         in
         {
           statix = pkgs.runCommand "check-statix" { nativeBuildInputs = [ pkgs.statix ]; } ''
@@ -238,6 +201,27 @@
             nixfmt --check ${./flake.nix}
             touch $out
           '';
+          # The gate ships ~150 lines of shell; lint it like everything else.
+          shellcheck = pkgs.runCommand "check-shellcheck" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
+            shellcheck ${./.githooks/pre-push} ${./.githooks/install} ${./scripts/check-gate.sh}
+            touch $out
+          '';
+          # Hermetic regression matrix for the hook + installer (make/nix are
+          # PATH-shimmed inside the script). Every scenario pins a behavior a
+          # review round proved breakable.
+          gate =
+            pkgs.runCommand "check-gate"
+              {
+                nativeBuildInputs = [
+                  pkgs.git
+                  pkgs.bash
+                ];
+              }
+              ''
+                cp -r ${./.} repo && chmod -R +w repo
+                cd repo && bash ./scripts/check-gate.sh
+                touch $out
+              '';
           # The test suite run against `src/` inside the closure. `PYTHONPATH=src`
           # shadows the installed copy so coverage/fixtures resolve to the tree.
           # `${./.}` is the flake source — git-TRACKED files only; a new test
@@ -253,7 +237,10 @@
             # httpx client (SSL context init, no network) need a cert file.
             export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
             # --no-cov: `make check` owns the coverage gate; this check is
-            # scoped to what only it can catch (native linking, lockfile drift).
+            # scoped to what only it can catch (native linking, lockfile
+            # drift). The flag needs pytest-cov in the dev deps to parse, and
+            # this run inherits everything else in pyproject's addopts — a
+            # future marker filter (e.g. -m 'not live') applies here too.
             pytest --no-cov -p no:cacheprovider
             touch $out
           '';

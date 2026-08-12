@@ -57,7 +57,9 @@ def _tracked_files() -> list[str]:
     except FileNotFoundError:
         pytest.skip("rename guard needs `git` on PATH")
     except subprocess.CalledProcessError as exc:
-        stderr = (exc.stderr or "").strip()
+        # typeshed types CalledProcessError.stderr as Any (it depends on the
+        # run()'s text mode); this call passes text=True, so it is str | None.
+        stderr: str = (exc.stderr or "").strip()  # pyright: ignore[reportAny]
         msg = f"`git ls-files` failed in {ROOT} (exit {exc.returncode}): {stderr}"
         raise RuntimeError(msg) from exc
     return result.stdout.splitlines()

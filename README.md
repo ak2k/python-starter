@@ -31,8 +31,18 @@ nix develop .#pure       # uv2nix editable venv. No .venv. Worktree edits live.
 nix build .#default      # runtime venv: project + [project.dependencies]
 nix build .#dev          # dev venv: adds [dependency-groups].dev (pytest, ruff, ...)
 nix fmt                  # autoformat flake.nix (RFC-166 via nixfmt)
-nix flake check          # statix lint + nixfmt --check on flake.nix
+nix flake check          # statix + nixfmt + shellcheck + gate matrix + pytest-in-closure
 ```
+
+Entering a dev shell also **arms the pre-push gate** when that is provably
+safe: `.githooks/install` sets `core.hooksPath` to the tracked `.githooks/`
+dir — but only in a repo spawned from this template, with no existing hooks
+or `hooksPath` convention that the setting would silently disable (it prints
+the manual command instead of arming when in doubt). Once armed, `git push`
+runs `make check` + `nix flake check` first — the latter builds the uv2nix
+closure, which takes minutes when cold. Bypass one push with
+`git push --no-verify` (or `MYPROJECT_SKIP_PREPUSH=1 git push`); unarm with
+`git config --local --unset core.hooksPath`.
 
 Pick `default` for daily work — `uv add` / `uv lock` / `uv run` all mutate state
 naturally and `make check` is the same command as the non-Nix path. Pick `.#pure`
@@ -58,7 +68,9 @@ The Nix layer is a lens, built via [uv2nix](https://pyproject-nix.github.io/uv2n
 | `src/myproject/example_service.py` | Canonical service shape — copy for new services |
 | `tests/test_example_service.py` | Canonical test shape — copy for new tests |
 | `src/myproject/errors.py` | Domain error hierarchy |
-| `.github/workflows/ci.yml` | CI runs `make check` |
+| `.github/workflows/ci.yml` | CI runs `make check` + the gate probes; nix path (build + flake check) when `flake.nix` exists |
+| `.githooks/` | Pre-push gate (`pre-push`) + its guarded installer (`install`); armed by the dev shell, regression-tested by `scripts/check-gate.sh` |
+| `scripts/check-gate.sh` | Hermetic probe matrix for the gate (runs in CI and as `checks.gate`) |
 | `flake.nix` + `.envrc` | Optional Nix layer: `default` (uv-managed) + `.#pure` (uv2nix editable) dev shells; `packages.{default,dev}` venvs |
 
 ## Philosophy
