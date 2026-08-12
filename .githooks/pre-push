@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Faithful pre-push gate: run what CI gates on, so "green locally" == "green in CI" —
+# instead of relying on remembering to run both loops. The fast inner loop (raw uv)
+# uses prebuilt wheels and can pass while the Nix-built closure (CI's
+# `nix flake check`) fails on native-linking or lockfile drift.
+#
+# Auto-installed by the devShell shellHook (`git config core.hooksPath .githooks`).
+# Bypass: `git push --no-verify`, or `MYPROJECT_SKIP_PREPUSH=1 git push`.
+set -euo pipefail
+
+if [ -n "${MYPROJECT_SKIP_PREPUSH:-}" ]; then
+  echo "pre-push: skipped (MYPROJECT_SKIP_PREPUSH set)"
+  exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+
+# uv inner loop (ruff + basedpyright + pytest) — the fast, always-available gate.
+echo "pre-push › make check (uv inner loop)"
+make check
+
+# Nix-faithful gate: statix + nixfmt + the test suite inside the uv2nix closure
+# (catches native-linking failures + flake-formatting the uv path can't see).
+# NB `nix flake check` does NOT typecheck — `make check` above covers that.
+if command -v nix >/dev/null 2>&1; then
+  echo "pre-push › nix flake check (statix + nixfmt + pytest-in-closure)"
+  nix flake check --print-build-logs
+else
+  echo "pre-push: nix not found — skipping the Nix-faithful gate (CI still runs it)" >&2
+fi

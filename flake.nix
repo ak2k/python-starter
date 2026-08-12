@@ -99,6 +99,14 @@
             ]
           );
           editableVenv = editablePythonSet.mkVirtualEnv "myproject-dev-env" workspace.deps.all;
+
+          # Point git at the tracked pre-push hook (faithful gate) on shell entry.
+          # Idempotent; silently skipped outside a work tree. Bypass a push with
+          # `git push --no-verify` or `MYPROJECT_SKIP_PREPUSH=1`.
+          installHooks = ''
+            git config --local core.hooksPath .githooks 2>/dev/null \
+              && echo "🪝 pre-push gate: .githooks (bypass: git push --no-verify)" || true
+          '';
         in
         {
           # Default shell: uv-managed. Matches the inner loop (`make fix`/`check`)
@@ -116,6 +124,7 @@
             shellHook = ''
               export UV_PYTHON=${python}/bin/python3
               export UV_PYTHON_PREFERENCE=only-system
+              ${installHooks}
               echo "🐍 python: $(python3 --version)"
               echo "📦 uv:     $(uv --version)"
             '';
@@ -135,10 +144,15 @@
               UV_NO_SYNC = "1";
               UV_PYTHON = "${editableVenv}/bin/python";
               UV_PYTHON_DOWNLOADS = "never";
+              # `uv run` (incl. via make, which otherwise defaults this to the
+              # out-of-tree cache path) uses the nix-built closure as the
+              # project venv — never a stale `.venv` / cache env.
+              UV_PROJECT_ENVIRONMENT = "${editableVenv}";
             };
             shellHook = ''
               unset PYTHONPATH
               export REPO_ROOT=$(git rev-parse --show-toplevel)
+              ${installHooks}
               echo "🐍 python: $(python --version) (nix-built, editable)"
               echo "📦 uv:     $(uv --version)"
             '';
@@ -165,6 +179,12 @@
         system:
         let
           pkgs = pkgsFor system;
+          # Non-editable venv with ALL deps to run the suite inside the uv2nix
+          # closure — what makes `nix flake check` a faithful gate: it catches
+          # native-linking failures the wheels-based raw-uv path hides. NB this
+          # does NOT typecheck; only `make check` runs basedpyright (the
+          # pre-push hook runs both).
+          testVenv = pythonSets.${system}.mkVirtualEnv "myproject-test-env" workspace.deps.all;
         in
         {
           statix = pkgs.runCommand "check-statix" { nativeBuildInputs = [ pkgs.statix ]; } ''
@@ -173,6 +193,18 @@
           '';
           nixfmt = pkgs.runCommand "check-nixfmt" { nativeBuildInputs = [ pkgs.nixfmt ]; } ''
             nixfmt --check ${./flake.nix}
+            touch $out
+          '';
+          # The test suite run against `src/` inside the closure. `PYTHONPATH=src`
+          # shadows the installed copy so coverage/fixtures resolve to the tree.
+          pytest = pkgs.runCommand "check-pytest" { nativeBuildInputs = [ testVenv ]; } ''
+            cp -r ${./.} work && chmod -R +w work && cd work
+            export HOME="$TMPDIR"
+            export PYTHONPATH="$PWD/src"
+            # The sandbox has no system CA bundle; tests that construct an httpx
+            # client (SSL context init, no network) need a cert file to exist.
+            export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+            pytest -p no:cacheprovider
             touch $out
           '';
         }

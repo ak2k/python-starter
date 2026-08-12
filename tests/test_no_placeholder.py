@@ -16,6 +16,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 # Assembled in two halves so the one-shot renamer never rewrites this guard's
 # own sentinel (it replaces only the literal token), and so this file never
 # matches itself.
@@ -29,13 +31,19 @@ _EXCLUDE = frozenset({"scripts/rename.py"})
 
 
 def _tracked_files() -> list[str]:
-    result = subprocess.run(
-        ["git", "ls-files"],  # noqa: S607  # git resolved from PATH by design
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "ls-files"],  # noqa: S607  # git resolved from PATH by design
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        # No git binary or no .git dir — e.g. the pytest-in-closure flake check
+        # runs against a gitless store copy. The guard still runs everywhere
+        # `make check` does (dev loop, CI, pre-push).
+        pytest.skip("rename guard needs `git ls-files`; not a git checkout")
     return result.stdout.splitlines()
 
 

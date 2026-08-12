@@ -56,8 +56,10 @@ jobs:
         if: ${{ hashFiles('flake.nix') != '' }}
         run: nix build .#default --print-build-logs
 
-      # Runs `checks.${system}.*` from flake.nix: statix + nixfmt --check.
-      # Also re-evaluates devShells/packages/inputs as a smoke test.
-      - name: Flake check (statix + nixfmt)
+      # Runs `checks.${system}.*` from flake.nix: statix + nixfmt --check +
+      # the test suite inside the uv2nix closure (catches native-linking
+      # failures the wheels-based uv path above can't see). Also re-evaluates
+      # devShells/packages/inputs as a smoke test.
+      - name: Flake check (statix + nixfmt + pytest-in-closure)
         if: ${{ hashFiles('flake.nix') != '' }}
         run: nix flake check --print-build-logs

@@ -1,5 +1,13 @@
 .PHONY: help install rename check lint format typecheck test fix clean
 
+# Keep the environment out of the source tree, matching the interactive `uv` wrapper's
+# path (~/.cache/uv-venvs/<dir>-<hash of $PWD>). That wrapper is a shell function, so make,
+# scripts and backgrounded subshells never see it and would otherwise build a SECOND,
+# extras-less .venv in-tree — which uv then prefers non-interactively. The symptom is
+# baffling: `uv run` finds an optional extra interactively and not under nohup.
+# `?=` so an explicit export (e.g. a nix shell pinning the env to its closure) wins.
+export UV_PROJECT_ENVIRONMENT ?= $(HOME)/.cache/uv-venvs/$(notdir $(CURDIR))-$(shell printf '%s' "$(CURDIR)" | shasum | cut -c1-8)
+
 help: ## show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
