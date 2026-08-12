@@ -1,40 +1,65 @@
 #!/usr/bin/env bash
 # Faithful pre-push gate: run what CI gates on. NB the gate checks the WORKING
-# TREE; CI checks the pushed commits — they agree exactly when the tree is
-# clean, so the warnings below call out any divergence instead of hiding it.
-# The fast inner loop (raw uv) uses prebuilt wheels and can pass while the
-# Nix-built closure (CI's `nix flake check`) fails on native-linking or
-# lockfile drift — that is the gap this hook closes.
+# TREE; CI checks the pushed commits — the warnings below call out every
+# divergence (dirty tree, untracked files, pushing a non-HEAD ref) instead of
+# hiding it. The fast inner loop (raw uv) uses prebuilt wheels and can pass
+# while the Nix-built closure (CI's `nix flake check`) fails on
+# native-linking or lockfile drift — that is the gap this hook closes.
 #
-# Auto-installed by the devShell shellHook (`git config core.hooksPath .githooks`).
-# Bypass: `git push --no-verify`, or `MYPROJECT_SKIP_PREPUSH=1 git push`.
+# Armed by the devShell shellHook (`git config --local core.hooksPath
+# .githooks`) when that is provably safe; it prints the manual command
+# otherwise. Bypass: `git push --no-verify`, or `MYPROJECT_SKIP_PREPUSH=1
+# git push`.
 set -euo pipefail
+
+BYPASS="bypass: 'git push --no-verify' or 'MYPROJECT_SKIP_PREPUSH=1 git push'"
 
 if [ -n "${MYPROJECT_SKIP_PREPUSH:-}" ]; then
   echo "pre-push: skipped (MYPROJECT_SKIP_PREPUSH set)"
   exit 0
 fi
 
+cd "$(git rev-parse --show-toplevel)"
+
 # git feeds "<local-ref> <local-sha> <remote-ref> <remote-sha>" per ref on
-# stdin. Ref deletions and tag pushes push no new code — skip the gate for
-# them rather than charging minutes for `git push origin :stale-branch`.
-zero=0000000000000000000000000000000000000000
+# stdin. Only ref DELETIONS (all-zero local sha, any hash algorithm) push no
+# code — tag pushes DO transfer their commits, so they are gated like
+# branches. No stdin records (a manual invocation) runs the full gate.
+records=0
 needs_check=0
-while read -r _ local_sha remote_ref _; do
-  if [ "$local_sha" = "$zero" ]; then continue; fi
-  case "$remote_ref" in refs/tags/*) continue ;; esac
+head_mismatch=""
+local_ref="" local_sha="" remote_ref="" remote_sha=""
+while read -r local_ref local_sha remote_ref remote_sha || [ -n "$local_sha" ]; do
+  if [ -z "$local_sha" ]; then continue; fi
+  records=$((records + 1))
+  case "$local_sha" in
+    *[!0]*) ;;     # contains a non-zero digit → something is being pushed
+    *) local_sha=""; continue ;;  # all-zero OID → ref deletion
+  esac
   needs_check=1
+  # The gate can only vouch for HEAD's tree — note when pushing anything else.
+  if pushed=$(git rev-parse --quiet --verify "$local_sha^{commit}" 2>/dev/null) &&
+    head=$(git rev-parse --quiet --verify "HEAD^{commit}" 2>/dev/null) &&
+    [ "$pushed" != "$head" ]; then
+    head_mismatch="$remote_ref"
+  fi
+  local_sha=""
 done
-if [ "$needs_check" -eq 0 ]; then
-  echo "pre-push: only ref deletions / tag pushes — skipping the gate"
+if [ "$records" -gt 0 ] && [ "$needs_check" -eq 0 ]; then
+  echo "pre-push: only ref deletions — skipping the gate"
   exit 0
 fi
-
-cd "$(git rev-parse --show-toplevel)"
+if [ "$records" -eq 0 ]; then
+  echo "pre-push: no ref list on stdin (manual invocation) — running the full gate"
+fi
 
 # Divergence warnings: dirty tracked files are seen by BOTH local gates but not
 # by CI; untracked files are seen by `make check` but invisible to `nix flake
-# check` (the flake source is git-tracked files only) and to CI.
+# check` (the flake source is git-tracked files only) and to CI; a non-HEAD
+# push means CI tests a commit this gate never looked at.
+if [ -n "$head_mismatch" ]; then
+  echo "pre-push: NOTE — pushing a ref that is not HEAD (e.g. $head_mismatch); the gate checks HEAD's tree, CI checks the pushed commits" >&2
+fi
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "pre-push: NOTE — working tree is dirty; the gate checks the tree, CI checks the pushed commits" >&2
 fi
@@ -45,7 +70,7 @@ fi
 # uv inner loop (ruff + basedpyright + pytest) — the fast, always-available gate.
 echo "pre-push › make check (uv inner loop)"
 make check || {
-  echo "pre-push: make check FAILED — fix it, or bypass with 'git push --no-verify' / MYPROJECT_SKIP_PREPUSH=1" >&2
+  echo "pre-push: make check FAILED — fix it, or $BYPASS" >&2
   exit 1
 }
 
@@ -55,9 +80,9 @@ make check || {
 if command -v nix >/dev/null 2>&1; then
   echo "pre-push › nix flake check (statix + nixfmt + pytest-in-closure; may build the closure — minutes when cold)"
   nix flake check --print-build-logs || {
-    echo "pre-push: nix flake check FAILED — fix it, or bypass with 'git push --no-verify' / MYPROJECT_SKIP_PREPUSH=1" >&2
+    echo "pre-push: nix flake check FAILED — fix it, or $BYPASS" >&2
     exit 1
   }
 else
-  echo "pre-push: nix not found — skipping the Nix-faithful gate (CI still runs it)" >&2
+  echo "pre-push: nix not found — skipping the Nix-faithful gate (CI's nix job covers it on PRs and main)" >&2
 fi

@@ -58,9 +58,9 @@ Entering a nix dev shell arms the tracked pre-push hook
 (`.githooks/pre-push`) when that is provably safe — it refuses (and prints
 the manual command) if a `core.hooksPath` convention or existing `.git/hooks`
 hooks would be silently disabled. The hook runs `make check` + `nix flake
-check` against your WORKING TREE — on a clean tree that is exactly what CI
-runs against the pushed commits (it warns when dirty/untracked files make the
-two diverge). NB `nix flake check` does NOT typecheck — only `make check`
+check` against your WORKING TREE — on a clean tree pushing HEAD, that is
+exactly what CI runs against the pushed commits (it warns when dirty files,
+untracked files, or a non-HEAD push make the two diverge). NB `nix flake check` does NOT typecheck — only `make check`
 runs basedpyright; run both (or push) before claiming green. Bypass:
 `git push --no-verify` or `MYPROJECT_SKIP_PREPUSH=1`. Unarm:
 `git config --local --unset core.hooksPath` — do this (or route them through

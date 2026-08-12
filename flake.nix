@@ -103,25 +103,48 @@
           # Arm the tracked pre-push gate (.githooks/pre-push) on shell entry —
           # only when provably safe. core.hooksPath REPLACES .git/hooks wholesale
           # (it would silently disable git-lfs / pre-commit / husky hooks), so:
-          # arm only inside a repo carrying our marker, with no hooksPath
-          # convention set and no existing hooks to disable; otherwise print why
-          # and the manual command. Subshell keeps variables out of the user's
-          # interactive shell. Bypass details in .githooks/pre-push (canonical).
+          # arm only inside a repo whose TRACKED tree carries our marker, with no
+          # hooksPath convention at ANY scope and no existing hooks to disable;
+          # otherwise print why plus the manual command. Style is load-bearing:
+          # this runs in the USER'S shell (direnv sources it into zsh), where
+          # `pipefail` turns a SIGPIPE'd `cmd | grep -q` probe into a guard
+          # bypass and zsh does not word-split unquoted command variables — so
+          # no short-circuiting pipelines, no `$cmd` indirection, and a probe
+          # failure refuses rather than arms. Subshell keeps variables out of
+          # the interactive shell. Bypass details in .githooks/pre-push.
           installHooks = ''
             (
-              arm_cmd="git config --local core.hooksPath .githooks"
               top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-              [ -x "$top/.githooks/pre-push" ] || exit 0   # not our repo — never touch config
-              current=$(git config --local --get core.hooksPath 2>/dev/null || true)
+              # marker must be TRACKED and executable — a foreign repo that
+              # happens to contain its own .githooks/pre-push is not ours
+              git ls-files --error-unmatch -- .githooks/pre-push >/dev/null 2>&1 || exit 0
+              [ -x "$top/.githooks/pre-push" ] || exit 0
+              manual="git config --local core.hooksPath .githooks"
+              armed=""
+              current=$(git config --get core.hooksPath 2>/dev/null || true)  # any scope
+              hooks_dir=$(git rev-parse --git-path hooks)
               if [ "$current" = ".githooks" ]; then
-                echo "🪝 pre-push gate: armed (bypass: git push --no-verify / MYPROJECT_SKIP_PREPUSH=1)"
+                armed=1
               elif [ -n "$current" ]; then
-                echo "🪝 pre-push gate NOT armed: core.hooksPath is already '$current' — to arm: $arm_cmd"
-              elif ls "$(git rev-parse --git-path hooks)" 2>/dev/null | grep -qv '\.sample$'; then
-                echo "🪝 pre-push gate NOT armed: existing hooks in $(git rev-parse --git-path hooks) would be disabled — to arm: $arm_cmd"
+                origin=$(git config --show-origin --get core.hooksPath 2>/dev/null | cut -f1)
+                echo "🪝 pre-push gate NOT armed: core.hooksPath is already '$current' ($origin) — to arm locally: $manual"
+              elif ! existing=$(find "$hooks_dir" -maxdepth 1 \( -type f -o -type l \) ! -name '*.sample' -print -quit 2>/dev/null); then
+                echo "🪝 pre-push gate NOT armed: could not inspect $hooks_dir — arm manually if appropriate: $manual"
+              elif [ -n "$existing" ]; then
+                echo "🪝 pre-push gate NOT armed: existing hook $existing would be disabled — to arm: $manual"
+              elif git config --local core.hooksPath .githooks 2>/dev/null; then
+                armed=1
               else
-                $arm_cmd 2>/dev/null \
-                  && echo "🪝 pre-push gate: armed (bypass: git push --no-verify / MYPROJECT_SKIP_PREPUSH=1)" || true
+                echo "🪝 pre-push gate NOT armed: 'git config' write failed (read-only or locked .git/config?) — arm manually: $manual" >&2
+              fi
+              if [ -n "$armed" ]; then
+                echo "🪝 pre-push gate: armed (bypass: git push --no-verify or MYPROJECT_SKIP_PREPUSH=1 git push)"
+                # the --local write lives in the SHARED repo config: warn when
+                # sibling worktrees would resolve hooks to a missing .githooks
+                wt_count=$(git worktree list --porcelain 2>/dev/null | grep -c '^worktree ' || true)
+                if [ "$wt_count" -gt 1 ]; then
+                  echo "🪝 note: $wt_count worktrees share this hook config — a worktree whose branch lacks .githooks/pre-push has NO pre-push hook" >&2
+                fi
               fi
             )
           '';
