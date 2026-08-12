@@ -30,8 +30,8 @@ nix develop              # default: python + uv + make. `uv sync` populates .ven
 nix develop .#pure       # uv2nix editable venv. No .venv. Worktree edits live.
 nix build .#default      # runtime venv: project + [project.dependencies]
 nix build .#dev          # dev venv: adds [dependency-groups].dev (pytest, ruff, ...)
-nix fmt                  # autoformat flake.nix (RFC-166 via nixfmt)
-nix flake check          # statix + nixfmt + shellcheck + gate matrix + pytest-in-closure
+nix fmt                  # treefmt: nixfmt + shfmt + yamlfmt (python: `make fix` owns ruff)
+nix flake check          # statix + treefmt/shellcheck + gate matrix + pytest-in-closure
 ```
 
 Entering a dev shell also **arms the pre-push gate** when that is provably

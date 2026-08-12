@@ -13,10 +13,10 @@ set -euo pipefail
 BYPASS="bypass: 'git push --no-verify' or 'MYPROJECT_SKIP_PREPUSH=1 git push'"
 
 case "${MYPROJECT_SKIP_PREPUSH:-}" in
-  1 | true | yes)
-    echo "pre-push: skipped (MYPROJECT_SKIP_PREPUSH set)" >&2
-    exit 0
-    ;;
+1 | true | yes)
+  echo "pre-push: skipped (MYPROJECT_SKIP_PREPUSH set)" >&2
+  exit 0
+  ;;
 esac
 
 cd "$(git rev-parse --show-toplevel)"
@@ -32,8 +32,8 @@ head=$(git rev-parse --quiet --verify "HEAD^{commit}" 2>/dev/null) || true
 while read -r _ local_sha remote_ref _; do
   [ -n "$local_sha" ] || continue
   case "$local_sha" in
-    *[!0]*) ;; # contains a non-zero digit → something is being pushed
-    *) continue ;; # all-zero OID → ref deletion
+  *[!0]*) ;;     # contains a non-zero digit → something is being pushed
+  *) continue ;; # all-zero OID → ref deletion
   esac
   pushing=1
   # The gate can only vouch for HEAD's tree — note when pushing anything else.
@@ -67,7 +67,7 @@ elif [ "$dirty_status" -gt 1 ]; then
 fi
 if untracked=$(git ls-files --others --exclude-standard); then
   if [ -n "$untracked" ]; then
-    echo "pre-push: NOTE — untracked files exist; \`nix flake check\` and CI cannot see them" >&2
+    echo "pre-push: NOTE — untracked files exist; nix flake check and CI cannot see them" >&2
   fi
 else
   echo "pre-push: NOTE — could not inspect untracked files (git ls-files failed)" >&2

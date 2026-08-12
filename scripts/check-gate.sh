@@ -39,17 +39,17 @@ check() { # check <name> <expected-exit> <expect-substring> <actual-exit> <outpu
 
 # Shim make/nix so gated paths terminate instantly and record that they ran.
 mkdir -p "$WORK/bin"
-cat > "$WORK/bin/make" <<'EOF'
+cat >"$WORK/bin/make" <<'EOF'
 #!/bin/sh
 echo "SHIM-MAKE $*"
 exit "${SHIM_MAKE_EXIT:-0}"
 EOF
-cat > "$WORK/bin/nix" <<'EOF'
+cat >"$WORK/bin/nix" <<'EOF'
 #!/bin/sh
 echo "SHIM-NIX $*"
 exit "${SHIM_NIX_EXIT:-0}"
 EOF
-cat > "$WORK/bin/uv" <<'EOF'
+cat >"$WORK/bin/uv" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
@@ -94,7 +94,7 @@ out=$(./.githooks/pre-push </dev/null 2>&1) && rc=0 || rc=$?
 check "hook: EOF manual invocation runs gate" 0 "SHIM-MAKE check" "$rc" "$out"
 out=$(printf 'refs/heads/x %s refs/heads/x %s\nrefs/heads/y %s refs/heads/y %s\n' "$Z40" "$HEAD_SHA" "$HEAD2" "$Z40" | ./.githooks/pre-push 2>&1) && rc=0 || rc=$?
 check "hook: mixed delete+code runs gate" 0 "SHIM-MAKE check" "$rc" "$out"
-echo dirty >> flake.nix
+echo dirty >>flake.nix
 out=$(printf 'refs/heads/m %s refs/heads/m %s\n' "$HEAD2" "$Z40" | ./.githooks/pre-push 2>&1) && rc=0 || rc=$?
 check "hook: dirty tree NOTE" 0 "working tree is dirty" "$rc" "$out"
 git checkout -q flake.nix
@@ -131,7 +131,7 @@ out=$(sh ./install 2>&1) && rc=0 || rc=$?
 check "install: arms from a subdirectory" 0 "armed" "$rc" "$out"
 
 new_repo "$WORK/i3" && cd "$WORK/i3"
-printf '#!/bin/sh\n' > .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+printf '#!/bin/sh\n' >.git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
 out=$(ins) && rc=0 || rc=$?
 check "install: existing hook refuses" 0 "would be disabled" "$rc" "$out"
 if [ -z "$(hp)" ]; then ok "install: refusal wrote nothing"; else bad "install: refusal wrote nothing"; fi
@@ -171,7 +171,7 @@ check "install: foreign repo (no marker) silent" 0 "" "$rc" "$out"
 if [ -z "$out" ]; then ok "install: foreign repo no output"; else bad "install: foreign repo no output ($out)"; fi
 
 new_repo "$WORK/i10" && cd "$WORK/i10" # flake-identity mismatch
-printf '#!/bin/sh\nexit 0\n' > "$WORK/other-hook"
+printf '#!/bin/sh\nexit 0\n' >"$WORK/other-hook"
 out=$(ins "$WORK/other-hook") && rc=0 || rc=$?
 check "install: flake-identity mismatch refuses" 0 "not the one this dev shell ships" "$rc" "$out"
 if [ -z "$(hp)" ]; then ok "install: mismatch wrote nothing"; else bad "install: mismatch wrote nothing"; fi

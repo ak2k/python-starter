@@ -22,6 +22,10 @@
         nixpkgs.follows = "nixpkgs";
       };
     };
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -31,6 +35,7 @@
       pyproject-nix,
       uv2nix,
       pyproject-build-systems,
+      treefmt-nix,
     }:
     let
       inherit (nixpkgs) lib;
@@ -76,6 +81,9 @@
           ]
         )
       );
+
+      # Unified formatter pipeline (see treefmt.nix for what it covers).
+      treefmtEval = forAllSystems (system: treefmt-nix.lib.evalModule (pkgsFor system) ./treefmt.nix);
     in
     {
       devShells = forAllSystems (
@@ -175,9 +183,10 @@
         dev = pythonSets.${system}.mkVirtualEnv "myproject-dev-env" workspace.deps.all;
       });
 
-      # `nix fmt` autoformats flake.nix to RFC-166 style.
-      # Paired with checks.${system}.nixfmt below, which verifies it stayed formatted.
-      formatter = forAllSystems (system: (pkgsFor system).nixfmt);
+      # `nix fmt` runs the unified treefmt pipeline (nix / shell / yaml —
+      # python is deliberately owned by the uv-pinned ruff in `make check`;
+      # see treefmt.nix). Paired with checks.${system}.treefmt below.
+      formatter = forAllSystems (system: treefmtEval.${system}.config.build.wrapper);
 
       # `nix flake check` runs these. `runCommand … touch $out` is the
       # idiomatic pass/fail pattern: tool exits non-zero → derivation fails.
@@ -197,15 +206,10 @@
             statix check ${./flake.nix}
             touch $out
           '';
-          nixfmt = pkgs.runCommand "check-nixfmt" { nativeBuildInputs = [ pkgs.nixfmt ]; } ''
-            nixfmt --check ${./flake.nix}
-            touch $out
-          '';
-          # The gate ships ~150 lines of shell; lint it like everything else.
-          shellcheck = pkgs.runCommand "check-shellcheck" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
-            shellcheck ${./.githooks/pre-push} ${./.githooks/install} ${./scripts/check-gate.sh}
-            touch $out
-          '';
+          # Formatting (nix/shell/yaml) + shellcheck over the whole tree —
+          # the check twin of `nix fmt`. Python format/lint is deliberately
+          # NOT here (see treefmt.nix): `make check`'s uv-pinned ruff owns it.
+          treefmt = treefmtEval.${system}.config.build.check self;
           # Hermetic regression matrix for the hook + installer (make/nix are
           # PATH-shimmed inside the script). Every scenario pins a behavior a
           # review round proved breakable.

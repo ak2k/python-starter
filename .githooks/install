@@ -61,14 +61,14 @@ if [ -z "${armed:-}" ]; then
   # failing probe refuses: never arm on uncertainty.
   hooks_dir=$(git rev-parse --git-path hooks 2>/dev/null) || refuse "could not resolve the hooks dir"
   if [ -d "$hooks_dir" ]; then
-    existing=$(find "$hooks_dir" -maxdepth 1 \( -type f -o -type l \) ! -name '*.sample' -print -quit 2>/dev/null) \
-      || refuse "could not inspect $hooks_dir"
+    existing=$(find "$hooks_dir" -maxdepth 1 \( -type f -o -type l \) ! -name '*.sample' -print -quit 2>/dev/null) ||
+      refuse "could not inspect $hooks_dir"
     if [ -n "$existing" ]; then
       refuse "existing hook $existing would be disabled"
     fi
   fi
-  git config --local core.hooksPath .githooks 2>/dev/null \
-    || refuse "'git config' write failed (read-only or locked .git/config?)"
+  git config --local core.hooksPath .githooks 2>/dev/null ||
+    refuse "'git config' write failed (read-only or locked .git/config?)"
 fi
 
 note "🪝 pre-push gate: armed (bypass: git push --no-verify or MYPROJECT_SKIP_PREPUSH=1 git push)"
