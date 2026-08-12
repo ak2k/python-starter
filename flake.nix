@@ -100,12 +100,30 @@
           );
           editableVenv = editablePythonSet.mkVirtualEnv "myproject-dev-env" workspace.deps.all;
 
-          # Point git at the tracked pre-push hook (faithful gate) on shell entry.
-          # Idempotent; silently skipped outside a work tree. Bypass details in
-          # .githooks/pre-push (the canonical copy).
+          # Arm the tracked pre-push gate (.githooks/pre-push) on shell entry —
+          # only when provably safe. core.hooksPath REPLACES .git/hooks wholesale
+          # (it would silently disable git-lfs / pre-commit / husky hooks), so:
+          # arm only inside a repo carrying our marker, with no hooksPath
+          # convention set and no existing hooks to disable; otherwise print why
+          # and the manual command. Subshell keeps variables out of the user's
+          # interactive shell. Bypass details in .githooks/pre-push (canonical).
           installHooks = ''
-            git config --local core.hooksPath .githooks 2>/dev/null \
-              && echo "🪝 pre-push gate: .githooks (bypass: git push --no-verify / MYPROJECT_SKIP_PREPUSH=1)" || true
+            (
+              arm_cmd="git config --local core.hooksPath .githooks"
+              top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+              [ -x "$top/.githooks/pre-push" ] || exit 0   # not our repo — never touch config
+              current=$(git config --local --get core.hooksPath 2>/dev/null || true)
+              if [ "$current" = ".githooks" ]; then
+                echo "🪝 pre-push gate: armed (bypass: git push --no-verify / MYPROJECT_SKIP_PREPUSH=1)"
+              elif [ -n "$current" ]; then
+                echo "🪝 pre-push gate NOT armed: core.hooksPath is already '$current' — to arm: $arm_cmd"
+              elif ls "$(git rev-parse --git-path hooks)" 2>/dev/null | grep -qv '\.sample$'; then
+                echo "🪝 pre-push gate NOT armed: existing hooks in $(git rev-parse --git-path hooks) would be disabled — to arm: $arm_cmd"
+              else
+                $arm_cmd 2>/dev/null \
+                  && echo "🪝 pre-push gate: armed (bypass: git push --no-verify / MYPROJECT_SKIP_PREPUSH=1)" || true
+              fi
+            )
           '';
         in
         {
@@ -146,9 +164,9 @@
               UV_NO_SYNC = "1";
               UV_PYTHON = "${editableVenv}/bin/python";
               UV_PYTHON_DOWNLOADS = "never";
-              # `uv run` (incl. via make, which otherwise defaults this to the
-              # out-of-tree cache path) uses the nix-built closure as the
-              # project venv — never a stale `.venv` / cache env.
+              # `uv run` (incl. via make) uses the nix-built closure as the
+              # project venv — never a stale `.venv` or an inherited
+              # relocation path from the user's shell.
               UV_PROJECT_ENVIRONMENT = "${editableVenv}";
             };
             shellHook = ''
@@ -211,7 +229,9 @@
             # The Linux sandbox has no system CA bundle; tests that construct an
             # httpx client (SSL context init, no network) need a cert file.
             export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-            pytest -p no:cacheprovider
+            # --no-cov: `make check` owns the coverage gate; this check is
+            # scoped to what only it can catch (native linking, lockfile drift).
+            pytest --no-cov -p no:cacheprovider
             touch $out
           '';
         }
