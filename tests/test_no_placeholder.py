@@ -14,7 +14,11 @@ skipped.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
+from typing import NoReturn
+
+import pytest
 
 # Assembled in two halves so the one-shot renamer never rewrites this guard's
 # own sentinel (it replaces only the literal token), and so this file never
@@ -27,15 +31,37 @@ ROOT = Path(__file__).resolve().parents[1]
 # renaming; everything else must be clean.
 _EXCLUDE = frozenset({"scripts/rename.py"})
 
+# Module-local alias so tests can stub git without patching the process-wide
+# `subprocess.run` (a plugin or thread calling it mid-test would get the stub).
+_run = subprocess.run
+
 
 def _tracked_files() -> list[str]:
-    result = subprocess.run(
-        ["git", "ls-files"],  # noqa: S607  # git resolved from PATH by design
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    # The pytest-in-closure flake check runs against a gitless store copy, and
+    # a bare environment may lack git entirely — both skip (the guard still
+    # runs everywhere `make check` does). A repo ANCESTOR counts: a template
+    # vendored into a monorepo subdirectory is still governed by git. Any
+    # OTHER git failure — corrupt index, dubious ownership — fails loudly
+    # with git's stderr attached: those are the CI-like environments where
+    # silently disabling the guard would hurt most.
+    if not any((p / ".git").exists() for p in (ROOT, *ROOT.parents)):
+        pytest.skip("rename guard needs a git checkout (gitless store copy)")
+    try:
+        result = _run(
+            ["git", "ls-files"],  # git resolved from PATH by design
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except FileNotFoundError:
+        pytest.skip("rename guard needs `git` on PATH")
+    except subprocess.CalledProcessError as exc:
+        # typeshed types CalledProcessError.stderr as Any (it depends on the
+        # run()'s text mode); this call passes text=True, so it is str | None.
+        stderr: str = (exc.stderr or "").strip()  # pyright: ignore[reportAny]
+        msg = f"`git ls-files` failed in {ROOT} (exit {exc.returncode}): {stderr}"
+        raise RuntimeError(msg) from exc
     return result.stdout.splitlines()
 
 
@@ -60,3 +86,66 @@ def test_no_placeholder_token_remains() -> None:
         "Re-run `make rename NEW=<pkg>` or finish the substitution by hand so no "
         "spawned repo ships an un-renamed reference."
     )
+
+
+def test_guard_skips_in_gitless_copy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A tree with no .git in it or any ancestor (the nix store copy) skips."""
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+    with pytest.raises(pytest.skip.Exception):
+        _tracked_files()
+
+
+def test_guard_skips_when_git_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """No git on PATH skips — the guard still runs wherever `make check` does."""
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+
+    def _raise(*args: object, **kwargs: object) -> NoReturn:
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(sys.modules[__name__], "_run", _raise)
+    with pytest.raises(pytest.skip.Exception):
+        _tracked_files()
+
+
+def test_guard_runs_in_nested_checkout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A template vendored into a monorepo subdir (repo in an ANCESTOR) still runs."""
+    (tmp_path / ".git").mkdir()
+    sub = tmp_path / "services" / "svc"
+    sub.mkdir(parents=True)
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", sub)
+
+    def _fake(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(["git", "ls-files"], 0, stdout="a.py\n", stderr="")
+
+    monkeypatch.setattr(sys.modules[__name__], "_run", _fake)
+    assert _tracked_files() == ["a.py"]
+
+
+def test_guard_fails_loudly_on_broken_repo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A git-level failure (corrupt index, dubious ownership) must NOT skip.
+
+    Deliberately not written as `pytest.raises` around the call: the round-1
+    defect converted git failures into `pytest.skip`, and a Skipped exception
+    escaping a non-matching `pytest.raises` block makes the TEST report
+    SKIPPED (exit 0) — the regression would pass CI unseen. Asserting on an
+    explicit outcome makes a reintroduced catch-and-skip fail red.
+    """
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+
+    def _raise(*args: object, **kwargs: object) -> NoReturn:
+        raise subprocess.CalledProcessError(
+            128, ["git", "ls-files"], stderr="fatal: detected dubious ownership"
+        )
+
+    monkeypatch.setattr(sys.modules[__name__], "_run", _raise)
+    outcome = "returned"
+    try:
+        _tracked_files()
+    except RuntimeError as exc:
+        assert "dubious ownership" in str(exc), "git's stderr must survive into the error"
+        outcome = "raised"
+    except pytest.skip.Exception:  # the pinned bug shape: skipping instead of failing
+        outcome = "skipped"
+    assert outcome == "raised", f"a git failure must fail loudly, not '{outcome}'"

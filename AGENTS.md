@@ -54,6 +54,25 @@ Both must be green. `filterwarnings = ["error"]` and `xfail_strict = true`
 are load-bearing — deprecation warnings and unexpected passes are real
 failures, not noise. Nix users: `nix develop` first; everything else is identical.
 
+Entering a nix dev shell arms the tracked pre-push hook
+(`.githooks/pre-push`) via the guarded installer (`.githooks/install`) when
+that is provably safe — it refuses, printing the manual command, if a
+`core.hooksPath` convention (any scope) or existing `.git/hooks` hooks would
+be silently disabled. The hook runs `make check` + `nix flake check` against
+your WORKING TREE — on a clean tree pushing HEAD, that is what CI runs
+against the pushed commits (it warns when dirty files, untracked files, or a
+non-HEAD push make the two diverge; the macOS/Linux sandbox asymmetry noted
+in flake.nix still applies). NB `nix flake check` does NOT typecheck — only
+`make check` runs basedpyright; run both (or push) before claiming green.
+Bypass: `git push --no-verify` or `MYPROJECT_SKIP_PREPUSH=1 git push`.
+Unarm: `git config --local --unset core.hooksPath` — do this (or route them
+through `.githooks/`) before adopting tools that install into `.git/hooks`
+(git-lfs, pre-commit), which `core.hooksPath` bypasses. Armed hooks execute
+whatever `.githooks/pre-push` the CHECKED-OUT branch carries — review that
+file before pushing from an untrusted branch (e.g. after `gh pr checkout`).
+The gate's behavior matrix is pinned by `scripts/check-gate.sh` (run by CI
+and `checks.gate`) — extend it when you change the hook or installer.
+
 ## Principles
 
 1. **Boundaries fail loudly.** Pydantic at every external edge with
@@ -180,6 +199,11 @@ Batch/sync transforms over a data engine — not a service. Tune as a set:
 
 ## Known gotchas (non-obvious from the toolchain)
 
+- Relocating the project env (`UV_PROJECT_ENVIRONMENT`) only works as an
+  **exported variable** (e.g. set by a chpwd/direnv hook) — never as a shell
+  *function* wrapping `uv`: make, scripts, and `nohup` don't inherit
+  functions, so a wrapper splits the project across two envs with baffling
+  symptoms (an optional extra imports interactively but not under `nohup`).
 - `structlog.get_logger()` returns `Any`. Annotate via
   `if TYPE_CHECKING: from structlog.stdlib import BoundLogger`, then suppress
   the RHS with `# pyright: ignore[reportAny]` + reason.
