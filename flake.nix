@@ -223,6 +223,10 @@
               }
               ''
                 cp -r ${./.} repo && chmod -R +w repo
+                # The Linux sandbox has no /usr/bin/env: point the scripts'
+                # shebangs at store paths so they exec the same way CI's
+                # unsandboxed uv-path run execs them.
+                patchShebangs repo/.githooks repo/scripts
                 cd repo && bash ./scripts/check-gate.sh
                 touch $out
               '';
