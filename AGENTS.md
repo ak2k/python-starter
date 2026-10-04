@@ -170,6 +170,13 @@ in addopts; CI opts in. Heavy native deps (`nodriver`, `camoufox`) belong in a
 `[project.optional-dependencies]` `browser` extra so the core install stays
 wheel-light — CI still builds the extra.
 
+**Strict-per-module mechanism.** "standard + strict per-module on public API"
+means: `typeCheckingMode = "standard"` globally (so untyped scraping libs don't
+drown you) + a `# pyright: strict` file-header on each pure-logic / typed-core
+module. Keep untrusted-parsing boundary modules (`json.loads -> object`
+juggling) in standard mode — strict fights them and the Pydantic boundary type
+validates the output anyway. TS-grade rigor on the core, tolerance at the edges.
+
 ### Profile C — Single-file script
 
 Skip the template. PEP 723 inline header:
